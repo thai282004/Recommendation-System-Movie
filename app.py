@@ -351,10 +351,20 @@ st.markdown(
     }
 
     /* --- MOVIE CARD UI (PRESERVED BUT CLEANED UP) --- */
+    .movie-card-center {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .movie-card-center .movie-card {
+        width: clamp(240px, 32vw, 320px);
+    }
+
     .movie-card {
         position: relative;
         width: 100%;
-        border-radius: 0 !important;
+        border-radius: 12px !important;
         background-color: transparent !important;
         line-height: 0 !important;
         font-size: 0 !important;
@@ -513,7 +523,7 @@ st.markdown(
 # 2. DATA & UTILS (BACKEND LOGIC)
 # =============================================================================
 TMDB_API_KEY = _TMDB_API_KEY_FALLBACK
-POSTER_LAZY_LIMIT = 10
+POSTER_LAZY_LIMIT = 70
 
 def _poster_url_from_path(poster_path: str | None) -> str:
     if not poster_path or not isinstance(poster_path, str):
@@ -605,7 +615,7 @@ def get_movie_search_map():
 def _safe_text(value) -> str:
     return html.escape("" if value is None else str(value))
 
-def render_movie_card(row, poster_url: str) -> None:
+def render_movie_card(row, poster_url: str, *, center: bool = False) -> None:
     title_full = _safe_text(row.get("title", ""))
     title_short = title_full if len(title_full) <= 24 else title_full[:24] + "..."
     release_date = _safe_text(row.get("release_date", ""))
@@ -617,8 +627,12 @@ def render_movie_card(row, poster_url: str) -> None:
     vote = row.get("vote_average", "")
     vote_txt = f"{vote}/10" if vote else ""
 
+    wrap_open = '<div class="movie-card-center">' if center else ""
+    wrap_close = "</div>" if center else ""
+
     _render_html(
         f"""
+        {wrap_open}
         <div class="movie-card" title="{title_full}">
           <img
             class="poster-img movie-poster"
@@ -639,6 +653,7 @@ def render_movie_card(row, poster_url: str) -> None:
             <div class="ov-overview">{overview}</div>
           </div>
         </div>
+                {wrap_close}
         """
     )
 
@@ -896,9 +911,9 @@ def render_rating_page():
     user_id = st.session_state["current_user"]
 
     # --- Section 1: Tìm cụ thể ---
-    st.markdown("##### 1. Tìm phim đã xem")
+    st.markdown("##### 1. Tìm phim để thực hiện đánh giá")
     with st.container(border=True):
-        col_s, col_r = st.columns([2, 1])
+        col_s, col_r = st.columns([1.2, 1.3])
         with col_s:
             movie_map = get_movie_search_map()
             manual_movie = st.selectbox(
@@ -922,9 +937,9 @@ def render_rating_page():
                 poster = poster_map.get(mid, _poster_url_from_path(poster_path))
                 
                 # Layout nhỏ gọn cho phần manual rating
-                c_img, c_rate = st.columns([1, 2])
+                c_img, c_rate = st.columns([1.2, 1])
                 with c_img:
-                    render_movie_card(mrow, poster)
+                    render_movie_card(mrow, poster, center=True)
                 with c_rate:
                     st.write("#### Đánh giá của bạn")
                     rating = st.slider("Thang điểm 5:", 0.5, 5.0, 4.0, 0.5, key="manual_rate")
@@ -989,17 +1004,17 @@ def render_dashboard():
             total_hours = int(my_hist["runtime"].fillna(0).sum() / 60)
             
             with st.container(border=True):
-                k1, k2, k3 = st.columns(3)
-                k1.metric("Tổng phim đã xem", total_movies)
-                k2.metric("Tổng thời gian (giờ)", f"{total_hours}")
-                k3.metric("Điểm trung bình", f"{avg_score:.1f}")
+                k1, k2 = st.columns(2)
+                k1.metric("Tổng phim đã đánh giá", total_movies)
+                # k2.metric("Tổng thời gian (giờ)", f"{total_hours}")
+                k2.metric("Điểm trung bình đánh giá", f"{avg_score:.1f}")
             
             st.write("")
             
             # HALL OF FAME
             favorites = my_hist[my_hist['rating'] >= 4.5].head(5)
             if not favorites.empty:
-                st.markdown("### 🏆 Hall of Fame: Phim yêu thích")
+                st.markdown("### 🏆 Hall of Fame: Phim yêu thích của bạn")
                 poster_items = list(zip(favorites["id"].tolist(), favorites["poster_path"].tolist())) if "poster_path" in favorites.columns else favorites["id"].tolist()
                 fav_posters = fetch_posters_concurrently(poster_items)
                 
@@ -1013,7 +1028,7 @@ def render_dashboard():
             st.divider()
             
             # HISTORY TABLE - BRIGHT THEME
-            st.markdown("### 📜 Nhật ký xem phim chi tiết")
+            st.markdown("### 📜 Nhật ký đánh giá phim của bạn")
             st.markdown('<div class="history-table-container">', unsafe_allow_html=True)
             
             hist = my_hist.copy()
@@ -1041,7 +1056,7 @@ def render_dashboard():
             st.markdown('</div>', unsafe_allow_html=True)
 
     with tab2:
-        st.info("💡 Báo cáo phân tích trên toàn bộ tập dữ liệu.")
+        st.info("💡 Báo cáo phân tích trên toàn bộ hệ thống.")
         with st.container(border=True):
             st.markdown("### 🤖 Hiệu năng Mô hình Lõi (SVD Algorithm)")
             m1, m2, m3, m4 = st.columns(4)
