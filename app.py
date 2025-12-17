@@ -10,6 +10,7 @@ import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
+from surprise import Dataset, Reader, SVD
 
 
 # Minimal path helper (no external package)
@@ -674,6 +675,37 @@ def save_new_rating(user_id, movie_id, rating_val):
     except Exception:
         return False
 
+
+def retrain_svd_model():
+    try:
+        ratings = pd.read_csv(DATA_PROCESSED / "ratings_final.csv")
+    except FileNotFoundError:
+        st.error("Lỗi: Không tìm thấy ratings_final.csv để huấn luyện.")
+        return False
+
+    if ratings.empty:
+        st.error("Dữ liệu ratings trống, không thể huấn luyện.")
+        return False
+
+    try:
+        reader = Reader(rating_scale=(0.5, 5))
+        data = Dataset.load_from_df(ratings[["userId", "id", "rating"]], reader)
+        trainset = data.build_full_trainset()
+        svd = SVD()
+        svd.fit(trainset)
+
+        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        with open(ARTIFACTS / "svd_model.pkl", "wb") as f:
+            pickle.dump(svd, f)
+
+        # Cập nhật biến toàn cục để dùng ngay trong phiên hiện tại
+        global svd_model
+        svd_model = svd
+        return True
+    except Exception as ex:
+        st.error(f"Huấn luyện SVD thất bại: {ex}")
+        return False
+
 # ----------------- ALGORITHMS -----------------
 
 def get_hybrid_recommendations(user_id, mood, time_available, companion, top_k=10):
@@ -945,10 +977,16 @@ def render_rating_page():
                     rating = st.slider("Thang điểm 5:", 0.5, 5.0, 4.0, 0.5, key="manual_rate")
                     if st.button("Lưu đánh giá", type="primary", use_container_width=True):
                         if save_new_rating(user_id, mid, rating):
-                            st.toast("✅ Đã lưu thành công!")
-                            st.cache_data.clear()
-                            time.sleep(1)
-                            st.rerun()
+                            with st.spinner("Đang huấn luyện lại mô hình..."):
+                                if retrain_svd_model():
+                                    st.toast("✅ Đã lưu & huấn luyện lại!")
+                                    st.cache_data.clear()
+                                    st.cache_resource.clear()
+                                    st.rerun()
+                                else:
+                                    st.error("Không thể huấn luyện lại mô hình.")
+                        else:
+                            st.error("Không thể lưu đánh giá.")
 
     st.divider()
 
@@ -970,10 +1008,17 @@ def render_rating_page():
                 st.markdown(f"**{row['title']}**")
                 r_val = st.slider(f"Điểm số:", 0.5, 5.0, 3.0, 0.5, key=f"quick_{row['id']}")
                 if st.button(f"Gửi đánh giá", key=f"btn_{row['id']}", type="primary", use_container_width=True):
-                    save_new_rating(user_id, row['id'], r_val)
-                    st.toast("✅ Đã lưu!")
-                    st.cache_data.clear()
-                    st.rerun()
+                    if save_new_rating(user_id, row['id'], r_val):
+                        with st.spinner("Đang huấn luyện lại mô hình..."):
+                            if retrain_svd_model():
+                                st.toast("✅ Đã lưu & huấn luyện lại!")
+                                st.cache_data.clear()
+                                st.cache_resource.clear()
+                                st.rerun()
+                            else:
+                                st.error("Không thể huấn luyện lại mô hình.")
+                    else:
+                        st.error("Không thể lưu đánh giá.")
 
 def render_dashboard():
     st.markdown("## 📈 Dashboard & Thống kê")
@@ -1108,7 +1153,7 @@ else:
         if st.button("🚪 Đăng xuất", use_container_width=True):
             st.session_state["is_logged_in"] = False
             st.rerun()
-        st.markdown("<div style='margin-top: 50px; font-size: 0.8rem; color: #94a3b8;'>© 2025 FilmGuru<br>Bright Edition</div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 50px; font-size: 0.8rem; color: #94a3b8;'>B22DCCN776<br>Movie Recommendation System</div>", unsafe_allow_html=True)
 
     if menu == "🏠 Trang chủ":
         render_home()
